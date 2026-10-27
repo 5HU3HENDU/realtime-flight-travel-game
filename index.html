@@ -105,7 +105,7 @@
   <div id="steerHint">Drag to steer the plane &larr; &rarr;</div>
   <div id="chips"></div>
   <div id="progressWrap">
-    <div id="metaRow"><span id="pct">0%</span><span id="kmLeft"></span><span id="minLeft"></span></div>
+    <div id="metaRow"><span id="pct">0%</span><span id="speed" title="Plain = from GPS, ~ = estimated from flight time">— km/h</span><span id="kmLeft"></span><span id="minLeft"></span></div>
     <div id="progressBar"><div id="progressFill"></div><div id="progressThumb"></div></div>
     <div id="routeRow"><span>Mumbai</span><span id="nextUp"></span><span>Varanasi</span></div>
   </div>
@@ -197,7 +197,7 @@ const sky = $("sky"), plane = $("plane"), card = $("placeCard");
 const TOTAL_KM = hav(BOM, VNS);
 let mode = "auto";
 let timer = { running: false, paused: false, base: 0, startedAt: 0, durMin: 120 };
-let gps = { lat: null, lon: null, ts: 0, watch: null, ever: false };
+let gps = { lat: null, lon: null, ts: 0, watch: null, ever: false, speedKmh: null, prev: null };
 let scrubT = null, lastPlaceIdx = -1, starCount = 0, hintHidden = false;
 function timerT() {
   if (!timer.running) return timer.base;
@@ -205,6 +205,13 @@ function timerT() {
   return Math.min(1, timer.base + (Date.now() - timer.startedAt) / 60000 / timer.durMin);
 }
 function gpsFresh() { return gps.ts && (Date.now() - gps.ts < 60000); }
+function currentSpeed() {
+  if (mode === "gps") return (gpsFresh() && gps.speedKmh !== null) ? { v: gps.speedKmh, est: false } : null;
+  if (mode === "timer") return timer.running ? { v: TOTAL_KM / timer.durMin * 60, est: true } : null;
+  if (gpsFresh() && gps.speedKmh !== null) return { v: gps.speedKmh, est: false };
+  if (timer.running) return { v: TOTAL_KM / timer.durMin * 60, est: true };
+  return null;
+}
 function currentT() {
   if (mode === "gps") return gps.ts ? projectT(gps) : 0;
   if (mode === "timer") return timerT();
@@ -289,7 +296,16 @@ function startGPS() {
   if (!("geolocation" in navigator)) { toast("This device has no GPS — using timer"); return false; }
   if (gps.watch !== null) return true;
   gps.watch = navigator.geolocation.watchPosition(p => {
-    gps.lat = p.coords.latitude; gps.lon = p.coords.longitude; gps.ts = Date.now();
+    const now = Date.now(), lat = p.coords.latitude, lon = p.coords.longitude;
+    let v = null;
+    if (p.coords.speed !== null && p.coords.speed !== undefined && p.coords.speed >= 0) v = p.coords.speed * 3.6;
+    else if (gps.prev) {
+      const dtH = (now - gps.prev.ts) / 3600000, d = hav(gps.prev, { lat, lon });
+      if (dtH > 0 && d >= 0.1 && dtH * 3600 >= 5) v = d / dtH;
+    }
+    if (v !== null && v <= 1500) gps.speedKmh = gps.speedKmh === null ? v : gps.speedKmh * 0.4 + v * 0.6;
+    gps.prev = { lat, lon, ts: now };
+    gps.lat = lat; gps.lon = lon; gps.ts = now;
     if (!gps.ever) { gps.ever = true; toast("GPS locked — following your real position"); }
   }, () => { toast("GPS unavailable — using timer instead"); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
   return true;
@@ -367,6 +383,8 @@ function frame(now) {
     else if (gpsFresh()) minText = "~" + Math.max(0, Math.round(kmLeft / 650 * 60)) + " min left";
     else minText = Math.max(0, Math.round((1 - t) * timer.durMin)) + " min left";
     $("pct").textContent = Math.round(t * 100) + "%";
+    const sp = currentSpeed();
+    $("speed").textContent = sp ? (sp.est ? "~" : "") + Math.round(sp.v) + " km/h" : "— km/h";
     $("kmLeft").textContent = kmLeft + " km to go";
     $("minLeft").textContent = minText;
     const next = PLACES[Math.min(found.index + 1, PLACES.length - 1)];
