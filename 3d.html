@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#6db9ec">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Flying Above">
+<!-- 3D edition: same app as index.html, but the sky plane and clouds render in 3D (Polyfork aeroplane + procedural clouds). The 2D version stays untouched in index.html. -->
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.180.0/examples/jsm/"
+} }
+</script>
+<title>Flying Above — Mumbai to Varanasi</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #6db9ec;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
+  #sky { position: fixed; inset: 0; overflow: hidden; touch-action: none;
+    background: linear-gradient(180deg, #5aa9e6 0%, #8ecdf5 45%, #cfeafb 75%, #fdf3d8 100%); }
+  #sun { position: absolute; top: 9%; right: 9%; width: 120px; height: 120px; border-radius: 50%;
+    background: radial-gradient(circle, #fff8d6 0%, #ffe89a 40%, rgba(255,232,154,0) 70%); opacity: .9; }
+  .cloud { position: absolute; width: 110px; height: 50px; z-index: 2; }
+  .cloud i { position: absolute; display: block; background: #fff; border-radius: 50%; }
+  .cloud i:nth-child(1) { left: 0; top: 18px; width: 62px; height: 32px; }
+  .cloud i:nth-child(2) { left: 30px; top: 0; width: 60px; height: 44px; }
+  .cloud i:nth-child(3) { left: 64px; top: 16px; width: 56px; height: 32px; }
+  .sparkle { position: absolute; width: 14px; height: 14px; background: #f5b81d; z-index: 4;
+    clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+  #plane { position: absolute; left: 50%; top: 56%; width: 64px; height: 64px; margin: -32px 0 0 -32px;
+    z-index: 5; filter: drop-shadow(0 8px 10px rgba(20,40,80,.35)); will-change: transform; }
+  #placeCard { position: absolute; left: 0; right: 0; top: 58px; text-align: center; padding: 0 20px;
+    z-index: 6; pointer-events: none; }
+  #placePrefix { font-size: 13px; letter-spacing: .28em; font-weight: 700; color: #1e3a5f; opacity: .75; }
+  #placeName { font-family: Georgia, "Times New Roman", serif; font-size: clamp(34px, 11vw, 48px);
+    line-height: 1.05; color: #10233f; margin: 2px 0 8px; text-shadow: 0 1px 0 rgba(255,255,255,.5); }
+  #placeLine { font-size: 16px; color: #243b5c; max-width: 520px; margin: 0 auto; line-height: 1.4; }
+  #placeFact { margin: 10px auto 0; max-width: 520px; background: rgba(255,255,255,.75); border-radius: 14px;
+    padding: 10px 14px; font-size: 14px; line-height: 1.45; color: #33475f; text-align: left; }
+  #placeCard.swap { animation: cardIn .5s ease; }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  #controls { position: absolute; top: 0; left: 0; right: 0; z-index: 8; display: flex; gap: 6px;
+    justify-content: center; align-items: center; padding: 10px 8px; }
+  #modeSeg { display: flex; background: rgba(255,255,255,.75); border-radius: 999px; padding: 3px; }
+  #modeSeg button { border: 0; background: transparent; padding: 5px 8px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; color: #33507a; }
+  #modeSeg button.on { background: #2563eb; color: #fff; }
+  #takeoffBtn { border: 0; background: #10233f; color: #fff; border-radius: 999px;
+    padding: 7px 12px; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  #durSel { border: 0; background: rgba(255,255,255,.75); border-radius: 999px;
+    padding: 6px 6px; font-size: 12px; font-weight: 600; color: #33507a; }
+  #stars { background: rgba(255,255,255,.75); border-radius: 999px; padding: 6px 10px;
+    font-size: 12px; font-weight: 700; color: #8a5a00; }
+  #steerHint { position: absolute; left: 50%; top: 68%; transform: translateX(-50%); z-index: 6;
+    font-size: 13px; color: #33507a; background: rgba(255,255,255,.6); padding: 6px 12px;
+    border-radius: 999px; pointer-events: none; transition: opacity .6s; white-space: nowrap; }
+  #chips { position: absolute; left: 0; right: 0; bottom: 118px; display: flex; gap: 6px;
+    overflow-x: auto; padding: 4px 12px; scrollbar-width: none; z-index: 6; }
+  #chips::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; background: rgba(255,255,255,.65); border-radius: 999px;
+    padding: 4px 10px; font-size: 12px; color: #33507a; }
+  .chip.done { opacity: .55; }
+  .chip.now { background: #10233f; color: #fff; opacity: 1; }
+  #progressWrap { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 6; background: rgba(255,255,255,.7); border-radius: 16px; padding: 10px 14px 12px; }
+  #metaRow { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: #243b5c; }
+  #progressBar { position: relative; height: 26px; margin: 6px 0 4px; cursor: pointer; }
+  #progressBar::before { content: ""; position: absolute; left: 0; right: 0; top: 11px;
+    height: 4px; border-radius: 2px; background: #b9d6ef; }
+  #progressFill { position: absolute; left: 0; top: 11px; height: 4px; border-radius: 2px; background: #2563eb; }
+  #progressThumb { position: absolute; top: 2px; width: 22px; height: 22px; margin-left: -11px;
+    border-radius: 50%; background: #2563eb; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+  #progressThumb::after { content: ""; display: block; width: 8px; height: 8px; margin: 7px auto;
+    border-radius: 50%; background: #fff; }
+  #routeRow { display: flex; justify-content: space-between; font-size: 12px; color: #55708f; }
+  #nextUp { font-weight: 600; color: #2563eb; text-align: center; }
+  #welcome { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center;
+    background: linear-gradient(180deg, #5aa9e6, #cfeafb); }
+  #welcome h1 { font-family: Georgia, "Times New Roman", serif; font-size: 42px; color: #10233f; margin: 0; }
+  #welcome p { color: #243b5c; font-size: 16px; line-height: 1.5; max-width: 340px; margin: 0; }
+  #welcome .big { border: 0; border-radius: 999px; padding: 14px 22px; font-size: 16px; font-weight: 700;
+    background: #10233f; color: #fff; width: 100%; max-width: 320px; }
+  #welcome .big.alt { background: #fff; color: #10233f; }
+  #welcome small { color: #55708f; font-size: 13px; line-height: 1.5; max-width: 320px; }
+  #toast { position: fixed; left: 50%; bottom: 170px; transform: translateX(-50%); background: #10233f;
+    color: #fff; padding: 9px 14px; border-radius: 999px; font-size: 13px; z-index: 30; opacity: 0;
+    transition: opacity .3s; pointer-events: none; max-width: 85vw; text-align: center; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="sky">
+  <div id="sun"></div>
+  <div id="cloudLayer"></div>
+  <div id="sparkleLayer"></div>
+  <div id="plane">
+    <svg viewBox="0 0 64 64" width="64" height="64">
+      <rect x="28" y="4" width="8" height="48" rx="4" fill="#ffffff" stroke="#dbe7f3" stroke-width="1"/>
+      <rect x="6" y="24" width="52" height="11" rx="5.5" fill="#ffffff" stroke="#dbe7f3" stroke-width="1"/>
+      <rect x="18" y="46" width="28" height="7" rx="3.5" fill="#ffffff" stroke="#dbe7f3" stroke-width="1"/>
+      <rect x="30" y="10" width="4" height="26" rx="2" fill="#2563eb"/>
+      <circle cx="32" cy="8" r="3" fill="#2563eb"/>
+    </svg>
+  </div>
+  <div id="placeCard">
+    <div id="placePrefix">FLYING ABOVE</div>
+    <div id="placeName">Mumbai</div>
+    <div id="placeLine"></div>
+    <div id="placeFact"></div>
+  </div>
+  <div id="steerHint">Drag to steer the plane &larr; &rarr;</div>
+  <div id="chips"></div>
+  <div id="progressWrap">
+    <div id="metaRow"><span id="pct">0%</span><span id="speed" title="Plain = from GPS, ~ = estimated from flight time">— km/h</span><span id="kmLeft"></span><span id="minLeft"></span></div>
+    <div id="progressBar"><div id="progressFill"></div><div id="progressThumb"></div></div>
+    <div id="routeRow"><span>Mumbai</span><span id="nextUp"></span><span>Varanasi</span></div>
+  </div>
+  <div id="controls">
+    <div id="modeSeg">
+      <button data-mode="auto" class="on">Auto</button><button data-mode="gps">GPS</button><button data-mode="timer">Timer</button>
+    </div>
+    <button id="takeoffBtn">Takeoff</button>
+    <select id="durSel" title="Flight length">
+      <option value="110">1h 50m</option><option value="120" selected>2h</option><option value="130">2h 10m</option>
+    </select>
+    <div id="stars">&#10022; <span id="starCount">0</span></div>
+  </div>
+</div>
+<div id="welcome">
+  <h1>Flying Above</h1>
+  <p>Mumbai &rarr; Varanasi. Open this in the air and watch the country pass underneath you — every city, river and famous place, as you fly over it.</p>
+  <button class="big" id="gpsBtn">Use my location (GPS)</button>
+  <button class="big alt" id="timerBtn">Takeoff &mdash; timer (2 hrs)</button>
+  <button class="big alt" id="previewBtn">Preview the route</button>
+  <small>3D edition: needs internet on first load (the aeroplane model comes from Polyfork's CDN), then works offline once cached. Your phone's GPS still works in flight mode. Or drag the progress bar anytime to travel the route by hand.</small>
+</div>
+<div id="toast"></div>
+<script>
+const BOM = { lat: 19.0896, lon: 72.8656 };
+const VNS = { lat: 25.3176, lon: 82.9730 };
+const R = 6371, rad = d => d * Math.PI / 180;
+function hav(a, b) {
+  const dLa = rad(b.lat - a.lat), dLo = rad(b.lon - a.lon);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function toVec(p) {
+  const la = rad(p.lat), lo = rad(p.lon);
+  return [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
+}
+function toLatLon(v) {
+  const hyp = Math.hypot(v[0], v[1]);
+  return { lat: Math.atan2(v[2], hyp) * 180 / Math.PI, lon: Math.atan2(v[1], v[0]) * 180 / Math.PI };
+}
+function atT(t) {
+  const va = toVec(BOM), vb = toVec(VNS);
+  const dot = Math.max(-1, Math.min(1, va[0] * vb[0] + va[1] * vb[1] + va[2] * vb[2]));
+  const om = Math.acos(dot), so = Math.sin(om);
+  if (so < 1e-6) return BOM;
+  const k0 = Math.sin((1 - t) * om) / so, k1 = Math.sin(t * om) / so;
+  return toLatLon([k0 * va[0] + k1 * vb[0], k0 * va[1] + k1 * vb[1], k0 * va[2] + k1 * vb[2]]);
+}
+function projectT(pos) {
+  let best = { d: 1e9, t: 0 };
+  for (let t = 0; t <= 1.0001; t += 0.002) { const d = hav(atT(t), pos); if (d < best.d) best = { d, t }; }
+  const lo = Math.max(0, best.t - 0.002), hi = Math.min(1, best.t + 0.002);
+  for (let t = lo; t <= hi + 1e-9; t += 0.0002) { const d = hav(atT(t), pos); if (d < best.d) best = { d, t }; }
+  return best.t;
+}
+const PLACES = [
+  { n: "Mumbai", la: 19.0760, lo: 72.8777, l: "India's financial capital, built on seven islands.", f: "Mumbai was once seven separate islands, joined together by land reclamation." },
+  { n: "Igatpuri", la: 19.7000, lo: 73.5600, l: "A hill town in the Western Ghats, on the climb out of Mumbai.", f: "Igatpuri is home to Dhamma Giri, one of the world's largest Vipassana meditation centres, with its golden pagoda on the hill." },
+  { n: "Nashik", la: 19.9975, lo: 73.7898, l: "Wine capital of India, and one of the four Kumbh Mela cities.", f: "The Kumbh Mela here draws millions of pilgrims — one of the largest peaceful gatherings on Earth." },
+  { n: "Malegaon", la: 20.5533, lo: 74.5283, l: "A powerloom town in northern Maharashtra.", f: "Malegaon has its own spoof film industry — locals fondly call it Mollywood." },
+  { n: "Ellora", la: 20.0259, lo: 75.1781, l: "34 rock-cut caves — Buddhist, Hindu and Jain — carved side by side.", f: "The Kailasa temple here was carved from the top down, out of one single rock." },
+  { n: "Ajanta", la: 20.5520, lo: 75.7030, l: "Buddhist caves painted more than 2,000 years ago.", f: "Lost to the jungle for centuries, Ajanta was rediscovered in 1819 by a British officer out hunting tigers." },
+  { n: "Jalgaon", la: 21.0077, lo: 75.5626, l: "Maharashtra's banana city.", f: "Jalgaon grows so many bananas it supplies a huge share of India's." },
+  { n: "Madhya Pradesh", la: 21.2000, lo: 76.0500, p: "Now entering", l: "The heart of India — forests, rivers and ancient hills.", f: "Madhya Pradesh is called the Heart of India, and it sits right in the middle of the country." },
+  { n: "Burhanpur", la: 21.3080, lo: 76.2290, l: "A Mughal-era city on the Tapti river.", f: "Mumtaz Mahal died here in 1631 — and some say the Taj Mahal was first planned in Burhanpur, not Agra." },
+  { n: "Khandwa", la: 21.8240, lo: 76.3530, l: "Birthplace of the legendary singer Kishore Kumar.", f: "Kishore Kumar was born here, and the town still celebrates his birthday every year." },
+  { n: "Satpura Range", la: 21.9500, lo: 77.5000, l: "The hills that divide the Narmada and Tapti valleys.", f: "Satpura means 'seven mountains'." },
+  { n: "Betul", la: 21.9010, lo: 77.9000, l: "A forested plateau town in the Satpuras.", f: "The forests around here are rich in teak — the Satpuras are one of India's great teak belts." },
+  { n: "Itarsi", la: 22.6200, lo: 77.7500, l: "One of central India's busiest railway junctions.", f: "One of India's busiest junctions — trains from Delhi, Mumbai and Chennai all pass through here." },
+  { n: "Jabalpur", la: 23.1810, lo: 79.9860, l: "The marble-rock city on the Narmada.", f: "At Bhedaghat nearby, the Narmada squeezes between tall marble cliffs — and moonlight boat rides there are famous." },
+  { n: "Katni", la: 23.8300, lo: 80.4000, l: "A town built on limestone.", f: "Katni sits on rich limestone deposits that feed cement plants across central India — and the flight path passes almost directly overhead, just 1 km away." },
+  { n: "Bandhavgarh", la: 23.7160, lo: 81.0290, l: "Tiger country, watched over by an ancient hill fort.", f: "Bandhavgarh is said to have among the highest tiger densities anywhere in the world." },
+  { n: "Rewa", la: 24.5370, lo: 81.2960, l: "The city of white tigers.", f: "Mohan, the world's first white tiger, was found in Rewa in 1951." },
+  { n: "Uttar Pradesh", la: 24.6000, lo: 81.8000, p: "Now entering", l: "Land of the Ganga, and of Ayodhya, Mathura and Kashi.", f: "Uttar Pradesh has more people than almost any country on Earth." },
+  { n: "Prayagraj", la: 25.4370, lo: 81.8460, l: "Where the Ganga, Yamuna and the mythical Saraswati meet.", f: "The Kumbh Mela gathering here is so huge it is said to be visible from space." },
+  { n: "Mirzapur", la: 25.1450, lo: 82.5640, l: "A carpet-weaving town on the Ganga, below the Vindhyas.", f: "Mirzapur's hand-knotted carpets have been exported around the world for generations." },
+  { n: "Varanasi", la: 25.3176, lo: 82.9730, p: "Arriving at", l: "One of the world's oldest living cities, on the Ganga.", f: "Mark Twain wrote that Varanasi is 'older than history, older than tradition, older even than legend'." }
+];
+PLACES.forEach(pl => { pl.t = projectT({ lat: pl.la, lon: pl.lo }); });
+PLACES.sort((a, b) => a.t - b.t);
+function placeFor(t) {
+  for (let i = 0; i < PLACES.length; i++) {
+    const lo = i === 0 ? 0 : (PLACES[i - 1].t + PLACES[i].t) / 2;
+    const hi = i === PLACES.length - 1 ? 1 : (PLACES[i].t + PLACES[i + 1].t) / 2;
+    if ((t >= lo && t < hi) || (i === PLACES.length - 1 && t >= lo)) return { place: PLACES[i], index: i };
+  }
+  return { place: PLACES[PLACES.length - 1], index: PLACES.length - 1 };
+}
+// ---- State ----
+const $ = id => document.getElementById(id);
+const sky = $("sky"), plane = $("plane"), card = $("placeCard");
+const TOTAL_KM = hav(BOM, VNS);
+let mode = "auto";
+let timer = { running: false, paused: false, base: 0, startedAt: 0, durMin: 120 };
+let gps = { lat: null, lon: null, ts: 0, watch: null, ever: false, speedKmh: null, prev: null };
+let scrubT = null, lastPlaceIdx = -1, starCount = 0, hintHidden = false;
+function timerT() {
+  if (!timer.running) return timer.base;
+  if (timer.paused) return timer.base;
+  return Math.min(1, timer.base + (Date.now() - timer.startedAt) / 60000 / timer.durMin);
+}
+function gpsFresh() { return gps.ts && (Date.now() - gps.ts < 60000); }
+function currentSpeed() {
+  if (mode === "gps") return (gpsFresh() && gps.speedKmh !== null) ? { v: gps.speedKmh, est: false } : null;
+  if (mode === "timer") return timer.running ? { v: TOTAL_KM / timer.durMin * 60, est: true } : null;
+  if (gpsFresh() && gps.speedKmh !== null) return { v: gps.speedKmh, est: false };
+  if (timer.running) return { v: TOTAL_KM / timer.durMin * 60, est: true };
+  return null;
+}
+function currentT() {
+  if (mode === "gps") return gps.ts ? projectT(gps) : 0;
+  if (mode === "timer") return timerT();
+  if (gpsFresh()) return projectT(gps);
+  if (timer.running) return timerT();
+  if (scrubT !== null) return scrubT;
+  return 0;
+}
+let toastTimer = null;
+function toast(msg) {
+  const el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 3500);
+}
+// ---- Chips ----
+const chipsEl = $("chips");
+const chipEls = PLACES.map(pl => {
+  const c = document.createElement("div"); c.className = "chip"; c.textContent = pl.n; chipsEl.appendChild(c); return c;
+});
+function showPlace(place, index) {
+  $("placePrefix").textContent = (place.p || "Flying above").toUpperCase();
+  $("placeName").textContent = place.n;
+  $("placeLine").textContent = place.l;
+  $("placeFact").innerHTML = "<b>Did you know?</b> " + place.f;
+  card.classList.remove("swap"); void card.offsetWidth; card.classList.add("swap");
+  chipEls.forEach((c, i) => { c.className = "chip" + (i < index ? " done" : "") + (i === index ? " now" : ""); });
+  chipEls[index].scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+}
+// ---- Clouds & sparkles ----
+const cloudLayer = $("cloudLayer"), sparkleLayer = $("sparkleLayer");
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function makeCloud(layer) {
+  const el = document.createElement("div"); el.className = "cloud";
+  el.innerHTML = "<i></i><i></i><i></i>";
+  el.style.opacity = layer.op; el.style.transform = "scale(" + layer.sc + ")";
+  cloudLayer.appendChild(el);
+  return { el, x: Math.random() * innerWidth, y: Math.random() * innerHeight, sp: layer.sp, sc: layer.sc, dead: false, ph: Math.random() * 6 };
+}
+const layers = [{ n: 5, sp: 18, op: .55, sc: .7 }, { n: 5, sp: 34, op: .8, sc: 1 }, { n: 4, sp: 58, op: .95, sc: 1.3 }];
+let clouds = [];
+layers.forEach(l => { for (let i = 0; i < l.n; i++) clouds.push(makeCloud(l)); });
+function respawnCloud(c) {
+  c.y = -120; c.x = Math.random() * innerWidth; c.dead = false;
+  c.el.style.transition = ""; c.el.style.opacity = ""; c.el.style.transform = "scale(" + c.sc + ")";
+}
+function makeSparkle() {
+  const el = document.createElement("div"); el.className = "sparkle"; sparkleLayer.appendChild(el);
+  return { el, x: Math.random() * innerWidth, y: Math.random() * innerHeight, sp: 30, dead: false };
+}
+let sparkles = []; for (let i = 0; i < 6; i++) sparkles.push(makeSparkle());
+function respawnSparkle(s) {
+  s.y = -30; s.x = 20 + Math.random() * (innerWidth - 40); s.dead = false;
+  s.el.style.transition = ""; s.el.style.transform = "scale(1)"; s.el.style.opacity = "1";
+}
+// ---- Steering ----
+let planeX = innerWidth / 2, targetX = innerWidth / 2;
+function steerTo(x) {
+  targetX = clamp(x, 40, innerWidth - 40);
+  if (!hintHidden) { hintHidden = true; $("steerHint").style.opacity = "0"; }
+}
+sky.addEventListener("pointerdown", e => { if (e.target.closest("#controls, #progressWrap, #chips")) return; steerTo(e.clientX); });
+sky.addEventListener("pointermove", e => { if (e.buttons && !e.target.closest("#controls, #progressWrap, #chips")) steerTo(e.clientX); });
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft") steerTo(targetX - 60);
+  if (e.key === "ArrowRight") steerTo(targetX + 60);
+});
+window.addEventListener("resize", () => { planeX = clamp(planeX, 40, innerWidth - 40); targetX = clamp(targetX, 40, innerWidth - 40); });
+// ---- Progress bar scrub ----
+const bar = $("progressBar");
+let scrubbing = false;
+function scrub(e) {
+  const r = bar.getBoundingClientRect();
+  const frac = clamp((e.clientX - r.left) / r.width, 0, 1);
+  if (timer.running && !timer.paused) { timer.base = frac; timer.paused = true; $("takeoffBtn").textContent = "Resume"; }
+  else if (timer.running) { timer.base = frac; }
+  else { scrubT = frac; }
+}
+bar.addEventListener("pointerdown", e => { scrubbing = true; bar.setPointerCapture(e.pointerId); scrub(e); });
+bar.addEventListener("pointermove", e => { if (scrubbing) scrub(e); });
+bar.addEventListener("pointerup", () => { scrubbing = false; });
+// ---- GPS ----
+function startGPS() {
+  if (!("geolocation" in navigator)) { toast("This device has no GPS — using timer"); return false; }
+  if (gps.watch !== null) return true;
+  gps.watch = navigator.geolocation.watchPosition(p => {
+    const now = Date.now(), lat = p.coords.latitude, lon = p.coords.longitude;
+    let v = null;
+    if (p.coords.speed !== null && p.coords.speed !== undefined && p.coords.speed >= 0) v = p.coords.speed * 3.6;
+    else if (gps.prev) {
+      const dtH = (now - gps.prev.ts) / 3600000, d = hav(gps.prev, { lat, lon });
+      if (dtH > 0 && d >= 0.1 && dtH * 3600 >= 5) v = d / dtH;
+    }
+    if (v !== null && v <= 1500) gps.speedKmh = gps.speedKmh === null ? v : gps.speedKmh * 0.4 + v * 0.6;
+    gps.prev = { lat, lon, ts: now };
+    gps.lat = lat; gps.lon = lon; gps.ts = now;
+    if (!gps.ever) { gps.ever = true; toast("GPS locked — following your real position"); }
+  }, () => { toast("GPS unavailable — using timer instead"); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+  return true;
+}
+// ---- Controls ----
+function setSeg(m) {
+  mode = m;
+  document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+}
+document.querySelectorAll("#modeSeg button").forEach(b => b.addEventListener("click", () => {
+  setSeg(b.dataset.mode);
+  if (b.dataset.mode === "gps") startGPS();
+}));
+function startTimer() {
+  timer = { running: true, paused: false, base: 0, startedAt: Date.now(), durMin: +$("durSel").value };
+  scrubT = null; $("takeoffBtn").textContent = "Pause";
+  toast("Takeoff! Timer running — " + timer.durMin + " min to Varanasi");
+}
+$("takeoffBtn").addEventListener("click", () => {
+  if (!timer.running) startTimer();
+  else if (timer.paused) { timer.startedAt = Date.now(); timer.paused = false; $("takeoffBtn").textContent = "Pause"; }
+  else { timer.base = timerT(); timer.paused = true; $("takeoffBtn").textContent = "Resume"; }
+});
+$("durSel").addEventListener("change", () => { timer.durMin = +$("durSel").value; });
+function closeWelcome() { $("welcome").style.display = "none"; }
+$("gpsBtn").addEventListener("click", () => { setSeg("auto"); startGPS(); closeWelcome(); toast("Waiting for GPS signal…"); });
+$("timerBtn").addEventListener("click", () => { setSeg("timer"); closeWelcome(); startTimer(); });
+$("previewBtn").addEventListener("click", () => { closeWelcome(); toast("Drag the progress bar to travel the route"); });
+// ---- Main loop ----
+let last = performance.now(), lastText = 0;
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  planeX += (targetX - planeX) * Math.min(1, dt * 8);
+  const bank = clamp((targetX - planeX) * 0.06, -20, 20);
+  plane.style.transform = "translateX(" + (planeX - innerWidth / 2) + "px) rotate(" + bank + "deg)";
+  const tSec = now / 1000;
+  const planeR = window.__planeRect ? window.__planeRect() : plane.getBoundingClientRect();
+  clouds.forEach(c => {
+    if (c.dead) return;
+    c.y += c.sp * dt;
+    const sway = Math.sin(tSec * .5 + c.ph) * 10;
+    c.el.style.left = (c.x + sway) + "px"; c.el.style.top = c.y + "px";
+    if (c.y > innerHeight + 120) { respawnCloud(c); return; }
+    if (c.sc >= 1.3) {
+      const r = c.el.getBoundingClientRect();
+      if (r.left < planeR.right && r.right > planeR.left && r.top < planeR.bottom && r.bottom > planeR.top) {
+        c.dead = true; c.el.style.transition = "transform .3s, opacity .3s";
+        c.el.style.transform = "scale(1.8)"; c.el.style.opacity = "0";
+        setTimeout(() => respawnCloud(c), 320);
+      }
+    }
+  });
+  sparkles.forEach(s => {
+    if (s.dead) return;
+    s.y += s.sp * dt;
+    s.el.style.left = s.x + "px"; s.el.style.top = s.y + "px";
+    if (s.y > innerHeight + 30) { respawnSparkle(s); return; }
+    const dx = s.x + 7 - (planeR.left + planeR.width / 2), dy = s.y + 7 - (planeR.top + planeR.height / 2);
+    if (dx * dx + dy * dy < 48 * 48) {
+      s.dead = true; starCount++; $("starCount").textContent = starCount;
+      s.el.style.transition = "transform .2s, opacity .2s"; s.el.style.transform = "scale(0)"; s.el.style.opacity = "0";
+      setTimeout(() => respawnSparkle(s), 220);
+    }
+  });
+  const t = currentT();
+  const found = placeFor(t);
+  if (found.index !== lastPlaceIdx) { lastPlaceIdx = found.index; showPlace(found.place, found.index); }
+  $("progressFill").style.width = (t * 100) + "%";
+  $("progressThumb").style.left = (t * 100) + "%";
+  if (now - lastText > 250) {
+    lastText = now;
+    const kmLeft = Math.round((1 - t) * TOTAL_KM);
+    let minText;
+    if (mode === "timer" || (mode === "auto" && timer.running && !gpsFresh())) minText = Math.max(0, Math.round((1 - t) * timer.durMin)) + " min left";
+    else if (gpsFresh()) minText = "~" + Math.max(0, Math.round(kmLeft / 650 * 60)) + " min left";
+    else minText = Math.max(0, Math.round((1 - t) * timer.durMin)) + " min left";
+    $("pct").textContent = Math.round(t * 100) + "%";
+    const sp = currentSpeed();
+    $("speed").textContent = sp ? (sp.est ? "~" : "") + Math.round(sp.v) + " km/h" : "— km/h";
+    $("kmLeft").textContent = kmLeft + " km to go";
+    $("minLeft").textContent = minText;
+    const next = PLACES[Math.min(found.index + 1, PLACES.length - 1)];
+    $("nextUp").textContent = found.index < PLACES.length - 1 ? "Next up: " + next.n : "Arriving in Varanasi";
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
+</script>
+<script type="module">
+// ---- 3D sky: Polyfork aeroplane + procedural clouds ----
+// If anything here fails (no internet on first load, CDN unreachable),
+// this whole block throws, the canvas is never added, and the 2D sky,
+// plane and clouds underneath keep working exactly as before.
+const PLANE_YAW = 0; // flip to Math.PI if the screenshot check shows the plane facing the camera
+try {
+  const THREE = await import("three");
+  const { createAsset } = await import("https://polyfork.dev/cdn/scrap-built-aeroplane-65ac95.mjs");
+
+  const skyEl = document.getElementById("sky");
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const canvas = renderer.domElement;
+  canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;";
+  skyEl.prepend(canvas);
+
+  // Sky gradient, same colours as the 2D sky
+  const gc = document.createElement("canvas"); gc.width = 16; gc.height = 512;
+  const g2 = gc.getContext("2d");
+  const grad = g2.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, "#5aa9e6"); grad.addColorStop(0.45, "#8ecdf5");
+  grad.addColorStop(0.75, "#cfeafb"); grad.addColorStop(1, "#fdf3d8");
+  g2.fillStyle = grad; g2.fillRect(0, 0, 16, 512);
+  const bgTex = new THREE.CanvasTexture(gc);
+  bgTex.colorSpace = THREE.SRGBColorSpace;
+
+  const scene = new THREE.Scene();
+  scene.background = bgTex;
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+  camera.position.set(0, 1.25, 5.6);
+  camera.lookAt(0, 0.15, 0);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+  const sun3d = new THREE.DirectionalLight(0xffffff, 1.4);
+  sun3d.position.set(3, 6, 4);
+  scene.add(sun3d);
+
+  // Aeroplane, normalised so its wingspan is ~2.8 world units
+  const plane3d = createAsset();
+  const pbox = new THREE.Box3().setFromObject(plane3d);
+  const psize = new THREE.Vector3(); pbox.getSize(psize);
+  const pcenter = new THREE.Vector3(); pbox.getCenter(pcenter);
+  const pscale = 2.8 / Math.max(psize.x, psize.z);
+  plane3d.scale.setScalar(pscale);
+  const basePos = pcenter.clone().multiplyScalar(-pscale);
+  plane3d.position.copy(basePos);
+  plane3d.rotation.y = PLANE_YAW;
+  scene.add(plane3d);
+
+  // Procedural clouds: puffs of flattened spheres, gliding toward the camera
+  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.92 });
+  const puffGeo = new THREE.SphereGeometry(1, 10, 8);
+  function makeCloud3d() {
+    const grp = new THREE.Group();
+    const n = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(puffGeo, cloudMat);
+      m.position.set((i - n / 2) * 1.1 + Math.random() * 0.6, Math.random() * 0.7, Math.random() * 0.8);
+      m.scale.set(1.2 + Math.random() * 1.1, 0.6 + Math.random() * 0.35, 1 + Math.random() * 0.4);
+      grp.add(m);
+    }
+    grp.scale.setScalar(0.9 + Math.random() * 1.1);
+    return grp;
+  }
+  const clouds3d = [];
+  for (let i = 0; i < 22; i++) {
+    const c = makeCloud3d();
+    c.position.set((Math.random() * 2 - 1) * 14, -1 + Math.random() * 8, -42 + Math.random() * 48);
+    c.userData.sp = 2 + Math.random() * 4;
+    c.userData.ph = Math.random() * 6;
+    scene.add(c); clouds3d.push(c);
+  }
+  function respawn3d(c) {
+    c.position.set((Math.random() * 2 - 1) * 14, -1 + Math.random() * 8, -42);
+  }
+
+  // Screen position of the 3D plane, so the DOM sparkles still collect on it
+  const projV = new THREE.Vector3();
+  window.__planeRect = () => {
+    projV.copy(plane3d.position); projV.y += 0.3; projV.project(camera);
+    const cx = (projV.x * 0.5 + 0.5) * innerWidth;
+    const cy = (-projV.y * 0.5 + 0.5) * innerHeight;
+    return { left: cx - 32, right: cx + 32, top: cy - 32, bottom: cy + 32 };
+  };
+
+  // 3D is up: hide the 2D plane and 2D clouds (the DOM sun stays, above the canvas)
+  document.getElementById("cloudLayer").style.display = "none";
+  document.getElementById("plane").style.display = "none";
+
+  function resize3d() {
+    renderer.setSize(skyEl.clientWidth, skyEl.clientHeight, false);
+    camera.aspect = skyEl.clientWidth / skyEl.clientHeight;
+    camera.updateProjectionMatrix();
+  }
+  addEventListener("resize", resize3d);
+  resize3d();
+
+  let last3d = performance.now();
+  (function loop3d(now) {
+    requestAnimationFrame(loop3d);
+    const dt = Math.min(0.05, (now - last3d) / 1000); last3d = now;
+    // planeX / targetX are the main script's steering globals
+    const nx = (typeof planeX === "number" ? planeX : innerWidth / 2);
+    const tx = (typeof targetX === "number" ? targetX : innerWidth / 2);
+    plane3d.position.x = basePos.x + (nx - innerWidth / 2) / (innerWidth / 2) * 2.4;
+    plane3d.position.y = basePos.y;
+    plane3d.position.z = basePos.z;
+    const bank = Math.max(-20, Math.min(20, (tx - nx) * 0.06));
+    plane3d.rotation.z = -bank * Math.PI / 180;
+    plane3d.rotation.y = PLANE_YAW - bank * 0.012;
+    const tSec = now / 1000;
+    clouds3d.forEach(c => {
+      c.position.z += c.userData.sp * dt;
+      c.position.x += Math.sin(tSec * 0.3 + c.userData.ph) * dt * 0.4;
+      if (c.position.z > 9) respawn3d(c);
+    });
+    renderer.render(scene, camera);
+  })(performance.now());
+} catch (err) {
+  // 3D unavailable: 2D sky stays exactly as it is.
+}
+</script>
+</body>
+</html>
