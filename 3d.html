@@ -417,7 +417,7 @@ if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").ca
 // If anything here fails (no internet on first load, CDN unreachable),
 // this whole block throws, the canvas is never added, and the 2D sky,
 // plane and clouds underneath keep working exactly as before.
-const PLANE_YAW = 0; // flip to Math.PI if the screenshot check shows the plane facing the camera
+const PLANE_YAW = Math.PI; // screenshot check showed the model faces +z (toward the camera), so turn it away
 try {
   const THREE = await import("three");
   const { createAsset } = await import("https://polyfork.dev/cdn/scrap-built-aeroplane-65ac95.mjs");
@@ -520,8 +520,9 @@ try {
     plane3d.position.y = basePos.y;
     plane3d.position.z = basePos.z;
     const bank = Math.max(-20, Math.min(20, (tx - nx) * 0.06));
-    plane3d.rotation.z = -bank * Math.PI / 180;
-    plane3d.rotation.y = PLANE_YAW - bank * 0.012;
+    // Banking signs flip with the yaw: facing away, the plane's left wing is on the screen's right
+    plane3d.rotation.z = bank * Math.PI / 180;
+    plane3d.rotation.y = PLANE_YAW + bank * 0.012;
     const tSec = now / 1000;
     clouds3d.forEach(c => {
       c.position.z += c.userData.sp * dt;
